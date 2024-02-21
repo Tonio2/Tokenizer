@@ -4,14 +4,15 @@ import { ethers } from "hardhat";
 
 const amountNeeded = ethers.parseUnits("0.1");
 const amountFunded = ethers.parseUnits("0.05");
+const smallAmount = ethers.parseUnits("0.001");
 
 describe("ECO42Token", function () {
   async function deployECO42TokenFixture() {
-    const [owner, projectDev, funder] = await ethers.getSigners();
+    const [owner, projectDev, funder, otherAccount] = await ethers.getSigners();
     const ECO42Token = await ethers.getContractFactory("ECO42Token");
     const eco42Token = await ECO42Token.deploy();
 
-    return { eco42Token, owner, projectDev, funder };
+    return { eco42Token, owner, projectDev, funder, otherAccount };
   }
 
   describe("Deployment", function () {
@@ -89,7 +90,9 @@ describe("ECO42Token", function () {
       await eco42Token
         .connect(projectDev)
         .createProject("Project 1", amountNeeded);
-      await eco42Token.connect(funder).fundProject(0, { value: amountFunded });
+      await eco42Token
+        .connect(funder)
+        .fundProject(0, amountFunded, { value: amountFunded });
       expect((await eco42Token.projects(0))[3]).to.equal(amountFunded);
     });
 
@@ -97,21 +100,10 @@ describe("ECO42Token", function () {
       const { eco42Token, funder } = await loadFixture(deployECO42TokenFixture);
 
       await expect(
-        eco42Token.connect(funder).fundProject(0, { value: amountFunded })
+        eco42Token
+          .connect(funder)
+          .fundProject(0, amountFunded, { value: amountFunded })
       ).to.be.revertedWith("Project does not exist");
-    });
-
-    it("Should fail if the amount is zero", async function () {
-      const { eco42Token, projectDev, funder } = await loadFixture(
-        deployECO42TokenFixture
-      );
-
-      await eco42Token
-        .connect(projectDev)
-        .createProject("Project 1", amountNeeded);
-      await expect(
-        eco42Token.connect(funder).fundProject(0, { value: 0 })
-      ).to.be.revertedWith("Amount cannot be zero");
     });
 
     it("Should mint and transfer token to the funder", async function () {
@@ -122,7 +114,9 @@ describe("ECO42Token", function () {
       await eco42Token
         .connect(projectDev)
         .createProject("Project 1", amountNeeded);
-      await eco42Token.connect(funder).fundProject(0, { value: amountFunded });
+      await eco42Token
+        .connect(funder)
+        .fundProject(0, amountFunded, { value: amountFunded });
       expect(await eco42Token.balanceOf(funder.address)).to.equal(amountFunded);
     });
 
@@ -134,9 +128,9 @@ describe("ECO42Token", function () {
       await eco42Token
         .connect(projectDev)
         .createProject("Project 1", amountNeeded);
-      await eco42Token.fundProject(0, { value: amountNeeded });
+      await eco42Token.fundProject(0, amountNeeded, { value: amountNeeded });
       await expect(
-        eco42Token.fundProject(0, { value: amountNeeded })
+        eco42Token.fundProject(0, amountNeeded, { value: amountNeeded })
       ).to.be.revertedWith("Project already funded");
     });
 
@@ -149,7 +143,9 @@ describe("ECO42Token", function () {
         .connect(projectDev)
         .createProject("Project 1", amountNeeded);
       await expect(
-        eco42Token.fundProject(0, { value: ethers.parseUnits("0.501") })
+        eco42Token.fundProject(0, ethers.parseUnits("0.501"), {
+          value: ethers.parseUnits("0.501"),
+        })
       ).to.be.revertedWith("Project already funded");
     });
 
@@ -162,7 +158,9 @@ describe("ECO42Token", function () {
         .connect(projectDev)
         .createProject("Project 1", amountNeeded);
       await expect(
-        eco42Token.connect(funder).fundProject(0, { value: amountFunded })
+        eco42Token
+          .connect(funder)
+          .fundProject(0, amountFunded, { value: amountFunded })
       ).to.changeEtherBalances(
         [funder, eco42Token],
         [-amountFunded, amountFunded]
@@ -178,7 +176,9 @@ describe("ECO42Token", function () {
         .connect(projectDev)
         .createProject("Project 1", amountNeeded);
       await expect(
-        eco42Token.connect(funder).fundProject(0, { value: amountNeeded })
+        eco42Token
+          .connect(funder)
+          .fundProject(0, amountNeeded, { value: amountNeeded })
       ).to.changeEtherBalances(
         [funder, projectDev],
         [-amountNeeded, amountNeeded]
@@ -193,13 +193,67 @@ describe("ECO42Token", function () {
       await eco42Token
         .connect(projectDev)
         .createProject("Project 1", amountNeeded);
-      await eco42Token.connect(funder).fundProject(0, { value: amountFunded });
+      await eco42Token
+        .connect(funder)
+        .fundProject(0, amountFunded, { value: amountFunded });
       await expect(
-        eco42Token.connect(funder).fundProject(0, { value: amountFunded })
+        eco42Token
+          .connect(funder)
+          .fundProject(0, amountNeeded, { value: amountFunded })
       ).to.changeEtherBalances(
         [eco42Token, projectDev],
         [-amountFunded, amountNeeded]
       );
+    });
+
+    it("Should store the amount funded by the funder", async function () {
+      const { eco42Token, projectDev, funder } = await loadFixture(
+        deployECO42TokenFixture
+      );
+
+      await eco42Token
+        .connect(projectDev)
+        .createProject("Project 1", amountNeeded);
+      await eco42Token
+        .connect(funder)
+        .fundProject(0, amountFunded, { value: amountFunded });
+      expect(await eco42Token.funds(funder, 0)).to.equal(amountFunded);
+    });
+
+    it("Should reimburse the funder if amount is lower than funded", async function () {
+      const { eco42Token, projectDev, funder } = await loadFixture(
+        deployECO42TokenFixture
+      );
+
+      const diff = amountFunded - smallAmount;
+
+      await eco42Token
+        .connect(projectDev)
+        .createProject("Project 1", amountNeeded);
+      await eco42Token
+        .connect(funder)
+        .fundProject(0, amountFunded, { value: amountFunded });
+      await expect(
+        eco42Token.connect(funder).fundProject(0, smallAmount)
+      ).to.changeEtherBalances([eco42Token, funder], [-diff, diff]);
+      expect(await eco42Token.funds(funder, 0)).to.equal(smallAmount);
+    });
+
+    it("Should fail if trying to defund a projet but the tokens have been transfered", async function () {
+      const { eco42Token, projectDev, funder, otherAccount } =
+        await loadFixture(deployECO42TokenFixture);
+
+      await eco42Token
+        .connect(projectDev)
+        .createProject("Project 1", amountNeeded);
+      await eco42Token
+        .connect(funder)
+        .fundProject(0, amountFunded, { value: amountFunded });
+      expect(await eco42Token.balanceOf(funder.address)).to.equal(amountFunded);
+      await eco42Token.connect(funder).transfer(otherAccount.address, amountFunded);
+      await expect(
+        eco42Token.connect(funder).fundProject(0, 0)
+      ).to.be.revertedWithCustomError(eco42Token, "ERC20InsufficientBalance");
     });
   });
 });
