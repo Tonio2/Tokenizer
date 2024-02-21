@@ -45,18 +45,18 @@ contract ECO42Token is ERC1155, ERC1155Supply, ReentrancyGuard {
                 totalSupply(_id) + diff <= project.amountNeeded,
                 "Cannot exceed the amount needed"
             );
-            require(msg.value >= diff, "Not enough funds to cover the amount needed");
+            require(msg.value >= diff * 1e15, "Not enough funds to cover the amount needed");
             _mint(msg.sender, _id, diff, "");
         } else {
             uint256 diff = fund - _amount;
             _burn(msg.sender, _id, diff);
-            (bool sent, ) = msg.sender.call{value: diff}("");
+            (bool sent, ) = msg.sender.call{value: diff * 1e15}("");
             require(sent, "Failed to send Ether");
         }
 
         if (totalSupply(_id) == project.amountNeeded) {
             project.funded = true;
-            (bool sent, ) = project.recipient.call{value: project.amountNeeded}("");
+            (bool sent, ) = project.recipient.call{value: project.amountNeeded * 1e15}("");
             require(sent, "Failed to send Ether");
         }
     }
