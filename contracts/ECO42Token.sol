@@ -3,9 +3,11 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import "@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Supply.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
 import "hardhat/console.sol";
 
-contract ECO42Token is ERC1155, ERC1155Supply {
+contract ECO42Token is ERC1155, ERC1155Supply, ReentrancyGuard {
     constructor() ERC1155("") {}
 
     struct Project {
@@ -30,7 +32,7 @@ contract ECO42Token is ERC1155, ERC1155Supply {
         projectCount++;
     }
 
-    function fundProject(uint256 _id, uint256 _amount) public payable {
+    function fundProject(uint256 _id, uint256 _amount) public payable nonReentrant {
         Project storage project = projects[_id];
 
         require(_id < projectCount, "Project does not exist");
